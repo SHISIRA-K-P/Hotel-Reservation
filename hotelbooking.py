@@ -745,3 +745,9 @@ if __name__ == '__main__':
    #  db.create_all()
       db.create_all()
       flask_app.run(host='0.0.0.0',port=5000,debug = True)
+
+
+# redis-server
+# celery -A hotelbooking  worker --loglevel=INFO
+# celery -A hotelbooking  beat --loglevel=INFO
+# python3 hotelbooking.py
