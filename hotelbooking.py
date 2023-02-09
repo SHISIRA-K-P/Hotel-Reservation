@@ -1,26 +1,21 @@
-# from models import User,Room,Employee,Customer
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 import time
 from werkzeug.security import generate_password_hash, check_password_hash
 flask_app = Flask(__name__)
 flask_app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:password@localhost/flask1'
-# flask_app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:password@localhost/flask_db'
 flask_app.config['SECRET_KEY'] = "b'{\x1f*!\xf3p\xc6\xae\xf0\x08\xa8~'"
-
 
 from datetime import datetime,timedelta
 db = SQLAlchemy(flask_app)
+
 import datetime
-
-
 from celery import Celery
 from flask_jwt_extended import JWTManager
 from flask_jwt_extended import jwt_required
 from flask_jwt_extended import get_jwt_identity
 from flask_jwt_extended import create_access_token,create_refresh_token
 jwt = JWTManager(flask_app)
-
 
 from flask_mail import Mail, Message
 
@@ -32,42 +27,26 @@ flask_app.config['MAIL_PASSWORD'] = 'czoeidbwdzxggnqr'   #2 step verification pa
 flask_app.config['MAIL_USE_TLS'] = False
 flask_app.config['MAIL_USE_SSL'] = True
 
-
 # Initialize extensions
 mail = Mail(flask_app)
 
-
-
-celery = Celery('hotelbooking', broker='redis://localhost')
-
-
-
+from datetime import timedelta
 from celery.schedules import crontab
-
-# celery.autodiscover_tasks(lambda:settings.INSTALLED_APPS)
-
-flask_app.config['CELERYBEAT_SCHEDULE'] = {
-        'periodic_task-every-minute': {
-            'task': 'periodic_task',
-            'schedule': crontab(minute=1),
-        }
+celery_app = Celery('hotelbooking', broker='redis://localhost')
+celery_app.conf.beat_schedule = {
+    "see-you-in-ten-seconds-task": {
+        "task": "hotelbooking.see_you",
+        "schedule": 10.0
     }
+}
 
 
-@celery.task(name="periodic_task")
-def periodic_task():
-    print("beat is working")
-    email="anc@gmail.com"
-    msg=Message(
-                    'Hello',
-                    sender="shisirakrishna@gmail.com",
-                    recipients=[email]   
-                )
-    msg.body="Hello Flask message sent from Flask-Mail"
-    mail.send(msg)
-    return 'ok'
+@celery_app.task
+def see_you():
+    print("See you in ten seconds!")
+    print("beat is working:")
 
-@celery.task
+@celery_app.task
 def send_async_email(email_data):
     """Background task to send an email with Flask-Mail."""
     msg = Message(email_data['subject'],
@@ -212,9 +191,9 @@ def Register():
                 # msg.body="Hello Flask message sent from Flask-Mail"
                 # mail.send(msg)
                 email_data = {
-                'subject': 'Hello from Flask',
+                'subject': 'HotelBooking Registration ',
                 'to': email,
-                'body': 'This is a test email sent from a background Celery task.'}
+                'body': 'You are successfully registeded.'}
                 send_async_email.delay(email_data)
                 db.session.add(user_obj)
                 db.session.commit()
@@ -227,7 +206,7 @@ def Register():
                 'email':email,
                 'position_type':position_type
 
-                # "output":"ok"
+             
                 })
     except Exception as error:
             print("\nException Occured", error)
@@ -741,7 +720,7 @@ def show_all():
 
 if __name__ == '__main__': 
     with flask_app.app_context():
-#    with flask_app.flask_app_context():
+   
    #  db.create_all()
       db.create_all()
       flask_app.run(host='0.0.0.0',port=5000,debug = True)
