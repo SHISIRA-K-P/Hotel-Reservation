@@ -1,13 +1,5 @@
-from flask import Flask, request, jsonify
-from flask_sqlalchemy import SQLAlchemy
-import time
-from werkzeug.security import generate_password_hash, check_password_hash
-flask_app = Flask(__name__)
-flask_app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:password@localhost/flask1'
-flask_app.config['SECRET_KEY'] = "b'{\x1f*!\xf3p\xc6\xae\xf0\x08\xa8~'"
-
-from datetime import datetime,timedelta
-db = SQLAlchemy(flask_app)
+from models import db,flask_app
+from models import *
 
 import datetime
 from celery import Celery
@@ -40,7 +32,6 @@ celery_app.conf.beat_schedule = {
     }
 }
 
-
 @celery_app.task
 def see_you():
     print("See you in ten seconds!")
@@ -56,115 +47,6 @@ def send_async_email(email_data):
     with flask_app.app_context():
         mail.send(msg)
 
-import enum
-class PostionTypeEnum(enum.Enum):
-    admin = 'admin'
-    receptionist = 'receptionist'
-    customer='customer'
-class User(db.Model):
-    __tablename__ = 'user'
-    id=db.Column(db.Integer, primary_key=True, nullable=False, unique=True)
-    username=db.Column(db.String(64), nullable=False,unique=True)
-    password=db.Column(db.String(500), nullable=False)
-    phone=db.Column(db.String(64), nullable=False, unique=True)
-    email=db.Column(db.String(64), nullable=False, unique=True)
-    position_type= db.Column(db.Enum(PostionTypeEnum), default=PostionTypeEnum.customer,nullable=False)
-
-    def set_password(self, password):
-        self.password= generate_password_hash(password)
-    def check_password(self, password):
-        return check_password_hash(self.password ,password)
-
-  
-    def __repr__(self):
-        return f'<User {self.username}>'
-    def to_json_user(self):
-      return {
-      'id':self.id,
-      'username': self.username,
-      'password': self.password,
-      'phone': self.phone,
-      'email': self.email,
-      'position_type': self.position_type,
-      }
-
-
-class Employee(db.Model):
-    __tablename__ = 'employee'
-    emp_id =db.Column(db.Integer, primary_key=True, nullable=False, unique=True)
-    address=db.Column(db.String(100), nullable=False)
-    qualification=db.Column(db.String(100),nullable=True)
-    age=db.Column(db.Integer,nullable=True)
-    userId=db.Column(db.Integer, db.ForeignKey('user.id'))
-    def to_json_employee(self):
-      return {
-      'emp_id':self.emp_id,
-      'address': self.address,
-      'qualification': self.qualification,
-      'age': self.age,
-      'userId': self.userId 
-      }
-
-
-class Customer(db.Model):
-    __tablename__ = 'customer'
-    cust_id=db.Column(db.Integer, primary_key=True, nullable=False, unique=True)
-    address=db.Column(db.String(500),nullable=True)
-    age=db.Column(db.Integer,nullable=True)
-    userId=db.Column(db.Integer, db.ForeignKey('user.id'))
-    
-    def __repr__(self):
-        return f'<Customer {self.id}>'
-    def to_json_customer(self):
-      return {
-      'cust_id':self.cust_id,
-      'address': self.address,
-      'age': self.age,
-      'UserId': self.userId 
-      }
-
-class Room(db.Model):
-    __tablename__ = 'room'
-    id=db.Column(db.Integer, primary_key=True, nullable=False, unique=True)
-    type=db.Column(db.String(64), nullable=False)
-    price=db.Column(db.Integer, nullable=False)
-    status=db.Column(db.String(64), nullable=False)
-    userId=db.Column(db.Integer, db.ForeignKey('user.id'))
-
-    def __repr__(self):
-        return f'<Room {self.id}>'
-    def to_json_room(self):
-      return {
-      'id':self.id,
-      'type': self.type,
-      'price': self.price,
-      'status': self.status,
-    #   'UserId': self.userId 
-      }
-
-class Booking(db.Model):
-    __tablename__ = 'booking'
-
-    id=db.Column(db.Integer, primary_key=True, nullable=False, unique=True)
-    starting_date=db.Column(db.DateTime)
-    releaving_date=db.Column(db.String(64), nullable=False)
-    no_of_person=db.Column(db.Integer, nullable=False)
-    userId=db.Column(db.Integer, db.ForeignKey('user.id'))
-    roomId=db.Column(db.Integer, db.ForeignKey('room.id')) 
-
-    def __repr__(self):
-        return f'<Booking {self.id}>'
-    def to_json_booking(self):
-      return {
-      'id':self.id,
-      'starting_date': self.starting_date,
-      'releaving_date': self.releaving_date,
-      'no_of_person': self.no_of_person,
-      'userId': self.userId ,
-      'roomId': self.roomId 
-      }
-
-
 @flask_app.route('/register', methods = [ 'POST'])
 def Register():
    
@@ -178,11 +60,18 @@ def Register():
             position_type=request.json['position_type']
             us_obj= User.query.filter_by(username=username).first()
             user_by_email = User.query.filter_by(email=email).first()
+            user_by_id= User.query.filter_by(id=id).first()
+            print("us_obj---------------",us_obj)
+            print("user_by_id============",user_by_id)
+            print("user_by_email=============",user_by_email)
             if us_obj or user_by_email:
                 return[{"msg" : 'Error: User exists!'}]
+            elif user_by_id:
+                return[{"msg" : 'Error:User with same Id exists!'}]
             else:
                 user_obj=User(id=id,username=username,phone=phone,email=email,position_type=position_type)
                 user_obj.set_password(password)
+                user_obj.hashCode=None
                 # msg=Message(
                 #     'Hello',
                 #     sender="shisirakrishna@gmail.com",
@@ -190,6 +79,7 @@ def Register():
                 # )
                 # msg.body="Hello Flask message sent from Flask-Mail"
                 # mail.send(msg)
+
                 email_data = {
                 'subject': 'HotelBooking Registration ',
                 'to': email,
@@ -197,16 +87,14 @@ def Register():
                 send_async_email.delay(email_data)
                 db.session.add(user_obj)
                 db.session.commit()
-                print('Record was successfully added')
-                return jsonify({
+            print('Record was successfully added')
+            return jsonify({
                 'id':id,
                 'username':username,
                 'password':user_obj.password,
                 'phone':phone,
                 'email':email,
                 'position_type':position_type
-
-             
                 })
     except Exception as error:
             print("\nException Occured", error)
@@ -217,28 +105,17 @@ def login():
     try:
         username = request.json.get("username")
         password = request.json.get("password")
-
         user = User.query.filter_by(username = username).one_or_none()
-
         if user is not None and check_password_hash(user.password, password):
-
             ret = {
                 'access_token': create_access_token(identity=username),
                 'refresh_token': create_refresh_token(identity=username)
             }
-
-            # access_token = create_access_token(identity=username)
-            # response =jsonify(message='success', access_token=access_token)
             return jsonify(ret), 200
         else:
             return jsonify(message='login failed'), 401
     except Exception as error:
             print("\nException Occured", error)
-        
-
-
-
-
 @flask_app.route("/refresh", methods=["GET"])
 @jwt_required()
 def refresh():
@@ -250,17 +127,69 @@ def refresh():
     }
     return jsonify(ret), 200
   
-
-
 @flask_app.route("/currentuser", methods=["GET"])
 @jwt_required()
 def protected1():
     # Access the identity of the current user with get_jwt_identity
     current_user = get_jwt_identity()
-    
     return jsonify(logged_in_as=current_user), 200
 
 
+import random
+import string
+@flask_app.route('/forgotpassword',methods=["POST"])
+def index():
+    if request.method=="POST":
+        email=request.json['email']
+        # email = request.form['email']
+        check = User.query.filter_by(email=email).first()
+        if check:
+            hashCode = ''.join(random.choices(string.ascii_letters + string.digits, k=24))
+            check.hashCode = hashCode
+            db.session.commit()
+            msg = Message('Confirm Password Change', sender = 'shisirakrishna@gmail.com', recipients = [email])
+            msg.body = "Hello,\nWe've received a request to reset your password. If you want to reset your password, click the link below and enter your new password\n http://192.168.68.129:5000/" + check.hashCode
+            mail.send(msg)
+            return "check your mail"
+        else:
+            return "invalid email"  
+    
+@flask_app.route("/<string:hashCode>",methods=["GET","POST"])
+
+def hashcode(hashCode):
+    check = User.query.filter_by(hashCode=hashCode).first()    
+    if check:
+        if request.method == 'POST':
+            passw = request.form['passw']
+            cpassw = request.form['cpassw']
+            if passw == cpassw:
+                # check.password = passw
+                check.hashCode= None
+                check.set_password(passw)
+                db.session.commit()
+                return "changed"
+            else:
+                return 'password mismatch'
+                return '''
+                     <form method="post">
+                       <small>enter your new password</small> <br>
+                     <input type="password" name="passw" id="passw" placeholder="password"> <br>
+                        <input type="password" name="cpassw" id="cpassw" placeholder="confirm password"> <br>
+                         <input type="submit" value="Submit">
+                    </form>
+                 '''
+              
+        else:
+            return '''
+                <form method="post">
+                    <small>enter your new password</small> <br>
+                    <input type="password" name="passw" id="passw" placeholder="password"> <br>
+                    <input type="password" name="cpassw" id="cpassw" placeholder="confirm password"> <br>
+                    <input type="submit" value="Submit">
+                </form>
+            '''
+    else:
+        return "Time is exceed."
 @flask_app.route('/employee/add', methods = ['GET', 'POST'])
 @jwt_required()
 def employee_add():
@@ -348,7 +277,6 @@ def employee_update(id):
     except Exception as error:
         print("Error while updating PostgreSQL table", error)
 
-
 @flask_app.route('/employee/delete/<int:id>',methods=['GET'])
 @jwt_required()
 def employee_delete(id):
@@ -365,7 +293,6 @@ def employee_delete(id):
                 if emp_obj:
                     db.session.delete(emp_obj)
                     db.session.commit()
-                
                     return jsonify({"output":"deleted"})
                 else:
                     return jsonify({"output":"employee  not found"})
@@ -373,8 +300,6 @@ def employee_delete(id):
                 return jsonify({"output":"Admin can only delete the Employee"})
     except Exception as error:
         print("Error while updating PostgreSQL table", error)
-
-
 
 @flask_app.route('/customer/add', methods = ['GET', 'POST'])
 @jwt_required()
@@ -392,8 +317,7 @@ def customer_add():
     if request.method=='GET':
         cust_objs= Customer.query.all()
         return jsonify([cust_obj.to_json_customer() for cust_obj in cust_objs])
-    if request.method == 'POST':
-       
+    if request.method == 'POST': 
         if role in 'receptionist':
             cust_id=request.json['cust_id']
             address=request.json['address']
@@ -412,7 +336,6 @@ def customer_add():
             })
         else:
             return jsonify({"output":"receptionist can only add the Customer"})
-
 
 
 @flask_app.route('/customer/update/<int:id>',methods=['GET','POST'])
@@ -487,13 +410,9 @@ def room_available():
         room_objs= Room.query.all()
         return jsonify([room_obj.to_json_room() for room_obj in room_objs if room_obj.status == "not booked"])
 
-
-
-
 @flask_app.route('/room/add', methods = ['GET', 'POST'])
 @jwt_required()
 def room_add():
-
     try:
         current_user= get_jwt_identity()
         user_obj = User.query.filter_by(username=current_user).first()
@@ -614,7 +533,6 @@ def booking_add():
             booking_obj=Booking(id=id,starting_date=starting_date,releaving_date=releaving_date,no_of_person=no_of_person,userId=userId,roomId=roomId)
             db.session.add(booking_obj)
             db.session.commit()
-
             room_obj= Room.query.filter_by(id=roomId).first()
             room_obj.status="booked"
             print(room_obj)
@@ -657,10 +575,8 @@ def booking_update(id):
                 booking_obj.no_of_person=no_of_person,
                 booking_obj.userId=userId,
                 booking_obj.roomId=roomId
-            
                 db.session.add(booking_obj)
                 db.session.commit()
-            
                 print('Record was successfully updated')
                 return jsonify({
                 'id':id,
@@ -671,11 +587,9 @@ def booking_update(id):
                 'roomId':roomId
                 })
             else:
-                return jsonify({"output":"booking id is not found"})
-                
+                return jsonify({"output":"booking id is not found"})          
     except Exception as error:
         print("Error while updating PostgreSQL table", error)
-
 
 @flask_app.route('/booking/delete/<int:id>',methods=['GET'])
 def booking_delete(id):
@@ -723,10 +637,11 @@ if __name__ == '__main__':
    
    #  db.create_all()
       db.create_all()
-      flask_app.run(host='0.0.0.0',port=5000,debug = True)
+      flask_app.run(host='192.168.68.129' ,port=5000,debug = True)
 
 
 # redis-server
 # celery -A hotelbooking  worker --loglevel=INFO
 # celery -A hotelbooking  beat --loglevel=INFO
 # python3 hotelbooking.py
+#  kill -9 $(lsof -t -i:"5000")
